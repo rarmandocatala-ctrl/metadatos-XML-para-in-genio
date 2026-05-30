@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metadatos Crossref — Qué incluye el XML y qué prepara el Administrador de DOIs</title>
+    <style>
+        :root {
+            --azul: #0056b3;
+            --azul-oscuro: #003d82;
+            --verde: #1e7e34;
+            --verde-fondo: #e8f5ec;
+            --rojo: #b02a37;
+            --rojo-fondo: #fde8ea;
+            --amarillo: #856404;
+            --amarillo-fondo: #fff8e6;
+            --gris: #6c757d;
+            --fondo: #f0f4f8;
+            --tarjeta: #fff;
+            --texto: #1a1a2e;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; font-family: "Segoe UI", system-ui, sans-serif;
+            background: var(--fondo); color: var(--texto); line-height: 1.55;
+        }
+        .hero {
+            background: linear-gradient(135deg, var(--azul) 0%, var(--azul-oscuro) 100%);
+            color: #fff; padding: 36px 24px 40px;
+        }
+        .hero-inner { max-width: 960px; margin: 0 auto; }
+        .hero h1 { margin: 0 0 10px; font-size: 1.85rem; font-weight: 700; line-height: 1.25; }
+        .hero p { margin: 0; opacity: 0.93; max-width: 720px; font-size: 1.05rem; }
+        .hero-meta { margin-top: 16px; font-size: 0.88rem; opacity: 0.85; }
+        .toolbar {
+            max-width: 960px; margin: -20px auto 0; padding: 0 16px;
+            position: relative; z-index: 2;
+        }
+        .toolbar-inner {
+            background: var(--tarjeta); border-radius: 12px; padding: 16px 20px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08); border: 1px solid #e2e8f0;
+            display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+        }
+        .toolbar label { font-size: 0.85rem; font-weight: 600; color: var(--gris); }
+        .filtros { display: flex; flex-wrap: wrap; gap: 8px; }
+        .filtro-btn {
+            border: 2px solid #dee2e6; background: #fff; border-radius: 999px;
+            padding: 6px 14px; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+            font-family: inherit; transition: 0.15s;
+        }
+        .filtro-btn.active { border-color: var(--azul); background: #e7f1ff; color: var(--azul); }
+        .filtro-btn[data-f="si"].active { border-color: var(--verde); background: var(--verde-fondo); color: var(--verde); }
+        .filtro-btn[data-f="parcial"].active { border-color: var(--amarillo); background: var(--amarillo-fondo); color: var(--amarillo); }
+        .filtro-btn[data-f="no"].active { border-color: var(--rojo); background: var(--rojo-fondo); color: var(--rojo); }
+        #buscar {
+            flex: 1; min-width: 180px; padding: 8px 14px; border: 1px solid #ccc;
+            border-radius: 8px; font-size: 0.9rem;
+        }
+        .btn-preview {
+            background: var(--verde); color: #fff; border: none; border-radius: 8px;
+            padding: 10px 18px; font-weight: 700; cursor: pointer; font-family: inherit;
+        }
+        .btn-preview:hover { background: #155724; }
+        .preview-overlay {
+            display: none; position: fixed; inset: 0; z-index: 1000;
+            background: rgba(15, 23, 42, 0.55); padding: 16px; overflow-y: auto;
+        }
+        .preview-overlay.open { display: flex; align-items: flex-start; justify-content: center; }
+        .preview-panel {
+            background: #fff; border-radius: 14px; width: 100%; max-width: 920px;
+            margin: 12px auto 32px; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .preview-head {
+            background: linear-gradient(135deg, #1e7e34 0%, #155724 100%);
+            color: #fff; padding: 22px 24px 20px; position: relative;
+        }
+        .preview-head h2 { margin: 0 0 8px; font-size: 1.35rem; }
+        .preview-head p { margin: 0; font-size: 0.92rem; opacity: 0.93; max-width: 680px; }
+        .preview-close {
+            position: absolute; top: 16px; right: 16px;
+            background: rgba(255,255,255,0.2); border: none; color: #fff;
+            width: 36px; height: 36px; border-radius: 8px; cursor: pointer;
+            font-size: 1.2rem; line-height: 1;
+        }
+        .preview-close:hover { background: rgba(255,255,255,0.32); }
+        .preview-body { padding: 20px 22px 28px; }
+        .preview-resumen {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 10px; margin-bottom: 20px;
+        }
+        .preview-stat {
+            background: #f8fafc; border: 1px solid #e2e8ea; border-radius: 10px;
+            padding: 12px; text-align: center;
+        }
+        .preview-stat .n { font-size: 1.5rem; font-weight: 800; color: var(--azul); }
+        .preview-stat .l { font-size: 0.75rem; color: var(--gris); margin-top: 2px; }
+        .preview-stat.verde .n { color: var(--verde); }
+        .preview-stat.naranja .n { color: #fd7e14; }
+        .preview-aviso {
+            background: #fff8e6; border: 1px solid #ffe08a; border-radius: 10px;
+            padding: 14px 16px; margin-bottom: 20px; font-size: 0.88rem; line-height: 1.5;
+        }
+        .preview-aviso strong { color: #856404; }
+        .preview-aviso ul { margin: 8px 0 0; padding-left: 1.2rem; }
+        .preview-aviso li { margin-bottom: 4px; }
+        .preview-toolbar {
+            display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; align-items: center;
+        }
+        .preview-toolbar label { font-size: 0.82rem; font-weight: 600; color: var(--gris); }
+        .preview-filtro {
+            border: 2px solid #dee2e6; background: #fff; border-radius: 999px;
+            padding: 5px 12px; font-size: 0.82rem; font-weight: 600; cursor: pointer; font-family: inherit;
+        }
+        .preview-filtro.active { border-color: var(--verde); background: var(--verde-fondo); color: var(--verde); }
+        .preview-grupo { margin-bottom: 22px; }
+        .preview-grupo-titulo {
+            font-size: 0.95rem; font-weight: 700; color: #2c3e50; margin: 0 0 10px;
+            padding-bottom: 6px; border-bottom: 2px solid #e7f1ff;
+        }
+        .preview-fila {
+            display: grid; grid-template-columns: 1fr auto auto; gap: 10px 14px;
+            align-items: start; padding: 11px 0; border-bottom: 1px solid #f0f2f5;
+            font-size: 0.88rem;
+        }
+        .preview-fila:last-child { border-bottom: none; }
+        .preview-fila.hidden-prev { display: none; }
+        .preview-nombre { font-weight: 600; color: #222; }
+        .preview-paso { font-size: 0.8rem; color: #666; margin-top: 3px; line-height: 1.4; }
+        .preview-badge {
+            font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+            white-space: nowrap; text-align: center;
+        }
+        .preview-badge.auto { background: #e7f1ff; color: var(--azul); }
+        .preview-badge.manual { background: #fff3cd; color: #856404; }
+        .preview-badge.auto-grabar { background: #ede4ff; color: #5a32a3; }
+        .preview-badge.maestro-si { background: var(--verde-fondo); color: var(--verde); }
+        .preview-badge.maestro-no { background: var(--rojo-fondo); color: var(--rojo); }
+        .preview-badge.maestro-na { background: #f0f2f5; color: #888; }
+        @media (max-width: 640px) {
+            .preview-fila { grid-template-columns: 1fr; gap: 6px; }
+        }
+        .leyenda-bar {
+            max-width: 960px; margin: 20px auto 0; padding: 0 16px;
+            display: flex; flex-wrap: wrap; gap: 12px;
+        }
+        .leyenda-item {
+            display: flex; align-items: center; gap: 8px; font-size: 0.82rem;
+            background: var(--tarjeta); padding: 8px 14px; border-radius: 8px;
+            border: 1px solid #e2e8ea;
+        }
+        .punto { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+        .punto.si { background: var(--verde); }
+        .punto.parcial { background: #fd7e14; }
+        .punto.no { background: var(--rojo); }
+        .punto.auto { background: var(--azul); }
+        main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
+        .resumen-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px; margin-bottom: 28px;
+        }
+        .resumen-card {
+            background: var(--tarjeta); border-radius: 10px; padding: 16px;
+            text-align: center; border: 1px solid #e2e8ea;
+        }
+        .resumen-card .num { font-size: 1.75rem; font-weight: 800; }
+        .resumen-card .lbl { font-size: 0.78rem; color: var(--gris); margin-top: 4px; }
+        .resumen-card.si .num { color: var(--verde); }
+        .resumen-card.parcial .num { color: #fd7e14; }
+        .resumen-card.no .num { color: var(--rojo); }
+        .seccion {
+            background: var(--tarjeta); border-radius: 12px; margin-bottom: 16px;
+            border: 1px solid #e2e8ea; overflow: hidden;
+        }
+        .seccion-header {
+            display: flex; align-items: center; gap: 12px; padding: 18px 22px;
+            cursor: pointer; user-select: none; background: #fafbfc;
+            border-bottom: 1px solid transparent; transition: 0.15s;
+        }
+        .seccion-header:hover { background: #f4f8ff; }
+        .seccion.open .seccion-header { border-bottom-color: #e2e8ea; }
+        .seccion-icon {
+            width: 44px; height: 44px; border-radius: 10px; display: flex;
+            align-items: center; justify-content: center; font-size: 1.3rem;
+            flex-shrink: 0;
+        }
+        .seccion-icon.envio { background: #e7f1ff; }
+        .seccion-icon.revista { background: #ede4ff; }
+        .seccion-icon.numero { background: #fff3cd; }
+        .seccion-icon.articulo { background: #d4edda; }
+        .seccion-titles h2 { margin: 0; font-size: 1.15rem; color: #2c3e50; }
+        .seccion-titles p { margin: 4px 0 0; font-size: 0.85rem; color: var(--gris); }
+        .chevron { margin-left: auto; font-size: 0.9rem; color: var(--gris); transition: transform 0.2s; }
+        .seccion.open .chevron { transform: rotate(90deg); }
+        .seccion-body { display: none; padding: 8px 16px 16px; }
+        .seccion.open .seccion-body { display: block; }
+        .meta-item {
+            border: 1px solid #eef1f4; border-radius: 10px; padding: 14px 16px;
+            margin-bottom: 10px; transition: 0.15s;
+        }
+        .meta-item.hidden-filter { display: none !important; }
+        .meta-item:hover { border-color: #c5d9f0; box-shadow: 0 2px 8px rgba(0,86,179,0.06); }
+        .meta-top { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+        .meta-nombre { font-weight: 700; font-size: 0.95rem; flex: 1; min-width: 200px; }
+        .meta-xml { font-family: Consolas, monospace; font-size: 0.78rem; color: var(--azul);
+            background: #f4f8ff; padding: 4px 8px; border-radius: 4px; word-break: break-all; }
+        .badge-estado {
+            font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.04em; padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+        }
+        .badge-estado.si { background: var(--verde-fondo); color: var(--verde); }
+        .badge-estado.parcial { background: var(--amarillo-fondo); color: var(--amarillo); }
+        .badge-estado.no { background: var(--rojo-fondo); color: var(--rojo); }
+        .badge-estado.auto { background: #e7f1ff; color: var(--azul); }
+        .meta-desc { margin: 10px 0 0; font-size: 0.88rem; color: #444; }
+        .meta-donde {
+            margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e2e8ea;
+            font-size: 0.82rem; color: var(--gris);
+        }
+        .meta-donde strong { color: var(--texto); }
+        .meta-ejemplo {
+            margin-top: 8px; font-size: 0.8rem; color: #555; font-style: italic;
+            background: #f8f9fa; padding: 8px 10px; border-radius: 6px;
+            border-left: 3px solid #dee2e6;
+        }
+        .intro-box {
+            background: var(--tarjeta); border-radius: 12px; padding: 22px 24px;
+            margin-bottom: 24px; border: 1px solid #e2e8ea;
+        }
+        .intro-box h2 { margin: 0 0 12px; font-size: 1.2rem; }
+        .intro-box p { margin: 0 0 10px; font-size: 0.92rem; }
+        footer {
+            max-width: 960px; margin: 0 auto; padding: 0 16px 40px;
+            font-size: 0.82rem; color: var(--gris); text-align: center;
+        }
+        @media print {
+            .toolbar, .filtro-btn, #buscar, .btn-preview, .preview-overlay, .chevron { display: none !important; }
+            .seccion-body { display: block !important; }
+            .hero { padding: 24px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .badge-estado, .punto, .seccion-icon { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body { background: #fff; }
+            .meta-item.hidden-filter { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+<header class="hero">
+    <div class="hero-inner">
+        <h1>Metadatos del archivo XML para Crossref</h1>
+        <p>Guía visual de qué información viaja en el envío a Crossref y qué puede prepararse hoy con el <strong>Administrador de DOIs</strong> de la revista [in]genios.</p>
+        <p class="hero-meta">Basado en un XML de ejemplo tipo revista académica (formato estándar Crossref 5.3) · Comparado con la herramienta actual · Revista [in]genios</p>
+    </div>
+</header>
+
+<div class="toolbar">
+    <div class="toolbar-inner">
+        <label>Ver:</label>
+        <div class="filtros" id="filtros">
+            <button type="button" class="filtro-btn active" data-f="todos">Todos</button>
+            <button type="button" class="filtro-btn" data-f="si">✓ Sí prepara</button>
+            <button type="button" class="filtro-btn" data-f="parcial">◐ Parcial</button>
+            <button type="button" class="filtro-btn" data-f="no">✗ No prepara</button>
+            <button type="button" class="filtro-btn" data-f="auto">⚙ Automático</button>
+        </div>
+        <input type="search" id="buscar" placeholder="Buscar metadato…" aria-label="Buscar">
+        <button type="button" class="btn-preview" onclick="abrirPreview()">Vista previa sencilla</button>
+    </div>
+</div>
+
+<div class="leyenda-bar">
+    <span class="leyenda-item"><span class="punto si"></span> Sí — se edita en la herramienta</span>
+    <span class="leyenda-item"><span class="punto parcial"></span> Parcial — con diferencias</span>
+    <span class="leyenda-item"><span class="punto no"></span> No — no está en la herramienta</span>
+    <span class="leyenda-item"><span class="punto auto"></span> Automático — lo genera el programa</span>
+</div>
+
+<main>
+    <div class="resumen-grid" id="resumen"></div>
+
+    <div class="intro-box">
+        <h2>¿Qué es este documento?</h2>
+        <p>Crossref recibe un archivo <strong>XML</strong> con datos de la revista, del número y de cada artículo. Este documento lista <strong>cada tipo de dato</strong> que suele incluirse (como en los envíos hechos desde plataformas editoriales habituales) y señala si el Administrador de DOIs de [in]genios puede crearlo hoy.</p>
+        <p><strong>Cómo leerlo:</strong> abra cada sección con un clic para ver el detalle técnico. Use los filtros arriba para acotar la lista. Para una <strong>lista sencilla</strong> (sin códigos XML) con lo automático vs. manual y qué ya trae el XML maestro de Ingenio, pulse <strong>Vista previa sencilla</strong>.</p>
+    </div>
+
+    <!-- SECCIÓN 1: ENVÍO -->
+    <article class="seccion open" data-seccion="envio">
+        <div class="seccion-header" onclick="toggleSeccion(this.parentElement)">
+            <div class="seccion-icon envio">📦</div>
+            <div class="seccion-titles">
+                <h2>1. Datos del envío (cabecera)</h2>
+                <p>Identifican el lote y quién lo deposita en Crossref</p>
+            </div>
+            <span class="chevron">▶</span>
+        </div>
+        <div class="seccion-body" id="lista-envio"></div>
+    </article>
+
+    <article class="seccion open" data-seccion="revista">
+        <div class="seccion-header" onclick="toggleSeccion(this.parentElement)">
+            <div class="seccion-icon revista">📰</div>
+            <div class="seccion-titles">
+                <h2>2. Datos de la revista</h2>
+                <p>Información general de [in]genios en el registro</p>
+            </div>
+            <span class="chevron">▶</span>
+        </div>
+        <div class="seccion-body" id="lista-revista"></div>
+    </article>
+
+    <article class="seccion open" data-seccion="numero">
+        <div class="seccion-header" onclick="toggleSeccion(this.parentElement)">
+            <div class="seccion-icon numero">📚</div>
+            <div class="seccion-titles">
+                <h2>3. Datos del número (volumen / issue)</h2>
+                <p>Fecha y volumen del número que se publica</p>
+            </div>
+            <span class="chevron">▶</span>
+        </div>
+        <div class="seccion-body" id="lista-numero"></div>
+    </article>
+
+    <article class="seccion open" data-seccion="articulo">
+        <div class="seccion-header" onclick="toggleSeccion(this.parentElement)">
+            <div class="seccion-icon articulo">📄</div>
+            <div class="seccion-titles">
+                <h2>4. Datos de cada artículo</h2>
+                <p>Título, autores, DOI, enlaces, resúmenes, referencias…</p>
+            </div>
+            <span class="chevron">▶</span>
+        </div>
+        <div class="seccion-body" id="lista-articulo"></div>
+    </article>
+</main>
+
+<footer>
+    Administrador de DOIs — Revista [in]genios · Documento de referencia · <span id="fecha-doc"></span>
+</footer>
+
+<div class="preview-overlay" id="preview-overlay" aria-hidden="true" onclick="if(event.target===this)cerrarPreview()">
+    <div class="preview-panel" role="dialog" aria-labelledby="preview-titulo">
+        <header class="preview-head">
+            <button type="button" class="preview-close" onclick="cerrarPreview()" aria-label="Cerrar">×</button>
+            <h2 id="preview-titulo">Vista previa — Metadatos Crossref</h2>
+            <p>Resumen de los <strong id="preview-total"></strong> tipos de dato: qué genera el programa solo, qué debe completar usted, y qué ya aparece en el <strong>XML maestro de Ingenio</strong> (458 artículos analizados).</p>
+        </header>
+        <div class="preview-body">
+            <div class="preview-resumen" id="preview-resumen"></div>
+            <div class="preview-aviso" id="preview-aviso-pendientes"></div>
+            <div class="preview-toolbar">
+                <label>Mostrar:</label>
+                <button type="button" class="preview-filtro active" data-pf="todos">Todos</button>
+                <button type="button" class="preview-filtro" data-pf="manual">Solo manuales</button>
+                <button type="button" class="preview-filtro" data-pf="pendiente">Manuales que faltan en el maestro</button>
+                <button type="button" class="preview-filtro" data-pf="auto">Solo automáticos</button>
+            </div>
+            <div id="preview-listas"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+const METADATOS = [
+    // ENVÍO
+    { seccion: 'envio', nombre: 'Versión del esquema Crossref', xml: 'doi_batch @version', estado: 'auto',
+      desc: 'Indica qué versión del formato Crossref usa el archivo (p. ej. 5.3 o 5.4).',
+      donde: 'Lo fija el programa al exportar (versión 5.4). No hay que escribirlo.',
+      ejemplo: 'version="5.3.1" en el ejemplo · 5.4.0 en [in]genios' },
+    { seccion: 'envio', nombre: 'Identificador del lote', xml: 'doi_batch_id', estado: 'auto',
+      desc: 'Nombre único de este envío (como un número de factura del paquete XML).',
+      donde: 'Generado automáticamente al exportar (fecha + hora).',
+      ejemplo: 'ingenios_20260527_20260527143052000' },
+    { seccion: 'envio', nombre: 'Marca de tiempo del envío', xml: 'timestamp', estado: 'auto',
+      desc: 'Fecha y hora exactas en que se creó el archivo.',
+      donde: 'Automático al exportar.' },
+    { seccion: 'envio', nombre: 'Nombre del depositante', xml: 'depositor / depositor_name', estado: 'si',
+      desc: 'Institución o persona que envía los metadatos a Crossref.',
+      donde: 'Configuración de la revista → Nombre del depositante.',
+      ejemplo: 'Universidad de Puerto Rico' },
+    { seccion: 'envio', nombre: 'Correo del depositante', xml: 'depositor / email_address', estado: 'si',
+      desc: 'Correo de contacto para Crossref.',
+      donde: 'Configuración de la revista → Correo del depositante.',
+      ejemplo: 'revista.ingenios@upr.edu' },
+    { seccion: 'envio', nombre: 'Registrante', xml: 'registrant', estado: 'si',
+      desc: 'Nombre que aparece como registrante del contenido (suele ser el título de la revista).',
+      donde: 'Configuración → Título de la revista (full_title).',
+      ejemplo: '[in]genios' },
+
+    // REVISTA
+    { seccion: 'revista', nombre: 'Título completo de la revista', xml: 'journal_metadata / full_title', estado: 'si',
+      desc: 'Nombre oficial de la publicación.',
+      donde: 'Configuración → Título de la revista.',
+      ejemplo: '[in]genios' },
+    { seccion: 'revista', nombre: 'Título abreviado', xml: 'journal_metadata / abbrev_title', estado: 'si',
+      desc: 'Forma corta del nombre; también influye en cómo se arma el sufijo del DOI.',
+      donde: 'Configuración → (Comienzo del sufijo DOI) / abbrev_title.',
+      ejemplo: 'ingenios' },
+    { seccion: 'revista', nombre: 'ISSN electrónico', xml: 'issn @media_type="electronic"', estado: 'si',
+      desc: 'ISSN de la versión digital de la revista.',
+      donde: 'Configuración → ISSN electrónico.',
+      ejemplo: '2374-2747' },
+    { seccion: 'revista', nombre: 'ISSN impreso', xml: 'issn @media_type="print"', estado: 'si',
+      desc: 'ISSN de la versión en papel, si la revista lo tiene.',
+      donde: 'Configuración → ISSN impreso (opcional). Si se deja en blanco, no se incluye en el XML.',
+      ejemplo: '[in]genios no usa ISSN impreso — campo vacío por defecto' },
+    { seccion: 'revista', nombre: 'Idioma de los metadatos de la revista', xml: 'journal_metadata @language', estado: 'auto',
+      desc: 'Idioma principal de la revista en el XML.',
+      donde: 'Fijado en «es» (español) al exportar.' },
+    { seccion: 'revista', nombre: 'Opciones de distribución de referencias', xml: 'reference_distribution_opts', estado: 'auto',
+      desc: 'Parámetro técnico de Crossref sobre cómo se comparten las citas.',
+      donde: 'Valor fijo «any» en la exportación.' },
+
+    // NÚMERO
+    { seccion: 'numero', nombre: 'Año de publicación del número', xml: 'journal_issue / publication_date / year', estado: 'si',
+      desc: 'Año en que sale el número.',
+      donde: 'Sección «Añadir nuevos números» → Año (o se toma del XML importado).',
+      ejemplo: '2025' },
+    { seccion: 'numero', nombre: 'Mes de publicación del número', xml: 'journal_issue / publication_date / month', estado: 'si',
+      desc: 'Mes del número (1–12).',
+      donde: 'Al añadir número → selector de mes.',
+      ejemplo: '12 (diciembre)' },
+    { seccion: 'numero', nombre: 'Volumen', xml: 'journal_volume / volume', estado: 'si',
+      desc: 'Número de volumen de la revista.',
+      donde: 'Añadir nuevos números → Volumen.',
+      ejemplo: '18' },
+    { seccion: 'numero', nombre: 'Número (issue)', xml: 'issue', estado: 'si',
+      desc: 'Número dentro del volumen.',
+      donde: 'Añadir nuevos números → Número.',
+      ejemplo: '1' },
+    { seccion: 'numero', nombre: 'Tipo de fecha (en línea)', xml: 'publication_date @media_type="online"', estado: 'auto',
+      desc: 'Indica que la fecha es de publicación en línea.',
+      donde: 'Automático en el XML generado.' },
+
+    // ARTÍCULO — general
+    { seccion: 'articulo', nombre: 'Idioma del artículo', xml: 'journal_article @language', estado: 'auto',
+      desc: 'Idioma principal del artículo.',
+      donde: 'Fijado en «es» al exportar.' },
+    { seccion: 'articulo', nombre: 'Tipo de publicación', xml: 'journal_article @publication_type', estado: 'auto',
+      desc: 'Indica texto completo (full_text), no solo resumen.',
+      donde: 'Siempre «full_text» en la exportación.' },
+
+    // ARTÍCULO — títulos
+    { seccion: 'articulo', nombre: 'Título principal', xml: 'titles / title', estado: 'si',
+      desc: 'Título del artículo.',
+      donde: 'Ventana de edición del artículo → Título principal.',
+      ejemplo: 'Más allá de la patologización' },
+    { seccion: 'articulo', nombre: 'Subtítulo', xml: 'titles / subtitle', estado: 'si',
+      desc: 'Subtítulo, si existe.',
+      donde: 'Ventana de edición → Subtítulo (opcional).',
+      ejemplo: 'el modelo de atención a personas trans…' },
+
+    // ARTÍCULO — autores
+    { seccion: 'articulo', nombre: 'Nombres del autor', xml: 'person_name / given_name', estado: 'si',
+      desc: 'Nombre(s) de pila de cada autor.',
+      donde: 'Ventana de edición → Autores.',
+      ejemplo: 'Marcela' },
+    { seccion: 'articulo', nombre: 'Apellidos del autor', xml: 'person_name / surname', estado: 'si',
+      desc: 'Apellido(s) de cada autor.',
+      donde: 'Ventana de edición → Autores.',
+      ejemplo: 'Schenck' },
+    { seccion: 'articulo', nombre: 'ORCID del autor', xml: 'person_name / ORCID', estado: 'si',
+      desc: 'Identificador ORCID (opcional).',
+      donde: 'Ventana de edición → campo ORCID por autor (si se usa).',
+      ejemplo: 'https://orcid.org/0000-0002-8526-3736' },
+    { seccion: 'articulo', nombre: 'Afiliación institucional', xml: 'affiliations / institution_name', estado: 'si',
+      desc: 'Universidad o centro de cada autor.',
+      donde: 'Ventana de edición → Afiliación por autor (opcional).',
+      ejemplo: 'Universidad de Puerto Rico' },
+    { seccion: 'articulo', nombre: 'Orden del autor (primero / adicional)', xml: 'person_name @sequence', estado: 'auto',
+      desc: 'Quién es autor principal y quién coautor.',
+      donde: 'El primero de la lista = first; los demás = additional.' },
+    { seccion: 'articulo', nombre: 'Rol del contribuyente', xml: 'person_name @contributor_role', estado: 'auto',
+      desc: 'Normalmente «author» (autor).',
+      donde: 'Siempre «author» en la exportación.' },
+
+    // ARTÍCULO — resúmenes
+    { seccion: 'articulo', nombre: 'Resumen en español', xml: 'jats:abstract @xml:lang="es"', estado: 'si',
+      desc: 'Abstract en español.',
+      donde: 'Sección avanzada del artículo → Resumen en español (opcional).',
+      ejemplo: 'Este artículo analiza…' },
+    { seccion: 'articulo', nombre: 'Resumen en inglés', xml: 'jats:abstract @xml:lang="en"', estado: 'si',
+      desc: 'Abstract en inglés (puede quedar vacío).',
+      donde: 'Sección avanzada → Resumen en inglés (opcional).',
+      ejemplo: '(vacío en el ejemplo)' },
+
+    // ARTÍCULO — fecha artículo
+    { seccion: 'articulo', nombre: 'Año del artículo', xml: 'journal_article / publication_date / year', estado: 'si',
+      desc: 'Año de publicación (heredado del número).',
+      donde: 'Viene del número; aparece en gris en la ventana de edición.' },
+    { seccion: 'articulo', nombre: 'Mes del artículo', xml: 'journal_article / publication_date / month', estado: 'si',
+      desc: 'Mes de publicación (heredado del número).',
+      donde: 'Viene del número; no editable por artículo.' },
+    { seccion: 'articulo', nombre: 'Día del artículo (opcional)', xml: 'journal_article / publication_date / day', estado: 'si',
+      desc: 'Día concreto de publicación del artículo, si se conoce.',
+      donde: 'Ventana de edición → Día (opcional).',
+      ejemplo: '15' },
+
+    // ARTÍCULO — páginas y licencia
+    { seccion: 'articulo', nombre: 'Página inicial', xml: 'pages / first_page', estado: 'si',
+      desc: 'Primera página del artículo en el número impreso/PDF.',
+      donde: 'Sección avanzada → Rango de páginas (ej. 11-19).',
+      ejemplo: '11' },
+    { seccion: 'articulo', nombre: 'Página final', xml: 'pages / last_page', estado: 'si',
+      desc: 'Última página del artículo.',
+      donde: 'Mismo campo de rango de páginas.',
+      ejemplo: '19' },
+    { seccion: 'articulo', nombre: 'Licencia Creative Commons', xml: 'ai:license_ref', estado: 'si',
+      desc: 'URL de la licencia bajo la que se publica el artículo.',
+      donde: 'Configuración de la revista → Licencia (aplica a todos los artículos).',
+      ejemplo: 'https://creativecommons.org/licenses/by-nc-nd/4.0/' },
+
+    // ARTÍCULO — DOI y enlaces
+    { seccion: 'articulo', nombre: 'DOI del artículo', xml: 'doi_data / doi', estado: 'si',
+      desc: 'Identificador DOI único del artículo. Se genera automáticamente al preparar cada artículo.',
+      donde: 'Automático al editar/grabar (prefijo 10.54114 + sufijo ingeniosv[Vol]i[Núm].[código]). Artículos importados conservan su DOI.',
+      ejemplo: '10.54114/ingeniosv12i2.1234' },
+    { seccion: 'articulo', nombre: 'Prefijo DOI de la revista', xml: '(parte del doi)', estado: 'si',
+      desc: 'Los primeros números del DOI (asignados por Crossref a la revista).',
+      donde: 'Configuración → Prefijo DOI.',
+      ejemplo: '10.54114' },
+    { seccion: 'articulo', nombre: 'Página web del artículo', xml: 'doi_data / resource', estado: 'si',
+      desc: 'URL donde se lee el artículo en la web de la revista.',
+      donde: 'Ventana de edición → Página del artículo en la web (obligatorio al grabar).',
+      ejemplo: 'https://www.ingeniosupr.com/…' },
+    { seccion: 'articulo', nombre: 'Enlace al PDF (detección automática)', xml: 'collection @property="crawler-based"', estado: 'si',
+      desc: 'Indica a servicios de detección de similitud dónde está el PDF.',
+      donde: 'Sección avanzada → Enlace al PDF (opcional). Si hay PDF, se incluyen ambas colecciones.',
+      ejemplo: '…/article/download/1/6' },
+    { seccion: 'articulo', nombre: 'PDF para minería de texto', xml: 'collection @property="text-mining"', estado: 'si',
+      desc: 'Enlace al PDF con tipo MIME para indexación.',
+      donde: 'Mismo campo de enlace al PDF.',
+      ejemplo: 'mime_type="application/pdf"' },
+
+    // ARTÍCULO — referencias
+    { seccion: 'articulo', nombre: 'Lista de referencias bibliográficas', xml: 'citation_list', estado: 'si',
+      desc: 'Bibliografía del artículo: una cita por bloque, texto completo (APA, MLA, etc.).',
+      donde: 'Sección avanzada → Pegar todas las referencias → Guardar referencias → revisar y Grabar artículo.',
+      ejemplo: '16 referencias en el XML de ejemplo' },
+    { seccion: 'articulo', nombre: 'Texto de cada referencia', xml: 'citation / unstructured_citation', estado: 'si',
+      desc: 'Cada referencia como texto libre (autor, año, título, enlace… en una sola cadena).',
+      donde: 'Una caja editable por referencia tras «Guardar referencias».',
+      ejemplo: 'Schenck, M. (2018). Incorporación de la diversidad…' },
+    { seccion: 'articulo', nombre: 'Clave numérica de la referencia', xml: 'citation @key', estado: 'auto',
+      desc: 'Número de orden de la cita (1, 2, 3…).',
+      donde: 'Asignado automáticamente al exportar según el orden de la lista.' },
+];
+
+const ESTADO_LABEL = {
+    si: 'Sí prepara',
+    parcial: 'Parcial',
+    no: 'No prepara',
+    auto: 'Automático'
+};
+
+/** generacion: auto | auto-grabar | manual | manual-opcional · enMaestro: true|false|null (null = no aplica) */
+const PREVIEW_EXTRA = {
+    'Versión del esquema Crossref': { generacion: 'auto', enMaestro: null, paso: 'No hay que hacer nada.' },
+    'Identificador del lote': { generacion: 'auto', enMaestro: null, paso: 'No hay que hacer nada.' },
+    'Marca de tiempo del envío': { generacion: 'auto', enMaestro: null, paso: 'No hay que hacer nada.' },
+    'Nombre del depositante': { generacion: 'manual', enMaestro: true, paso: 'Paso Configuración → Nombre del depositante.' },
+    'Correo del depositante': { generacion: 'manual', enMaestro: true, paso: 'Paso Configuración → Correo del depositante.' },
+    'Registrante': { generacion: 'manual', enMaestro: true, paso: 'Paso Configuración → Título de la revista.' },
+    'Título completo de la revista': { generacion: 'manual', enMaestro: true, paso: 'Paso Configuración → Título de la revista.' },
+    'Título abreviado': { generacion: 'manual', enMaestro: true, paso: 'Paso Configuración → Comienzo del sufijo DOI.' },
+    'ISSN electrónico': { generacion: 'manual', enMaestro: true, paso: 'Paso Configuración → ISSN electrónico.' },
+    'ISSN impreso': { generacion: 'manual-opcional', enMaestro: false, paso: 'Paso Configuración → ISSN impreso (opcional; [in]genios no lo usa).' },
+    'Idioma de los metadatos de la revista': { generacion: 'auto', enMaestro: null, paso: 'El programa lo fija en español.' },
+    'Opciones de distribución de referencias': { generacion: 'auto', enMaestro: null, paso: 'No hay que hacer nada.' },
+    'Año de publicación del número': { generacion: 'manual', enMaestro: true, paso: 'Paso Añadir nuevos números → Año.' },
+    'Mes de publicación del número': { generacion: 'manual', enMaestro: true, paso: 'Paso Añadir nuevos números → Mes.' },
+    'Volumen': { generacion: 'manual', enMaestro: true, paso: 'Paso Añadir nuevos números → Volumen.' },
+    'Número (issue)': { generacion: 'manual', enMaestro: true, paso: 'Paso Añadir nuevos números → Número.' },
+    'Tipo de fecha (en línea)': { generacion: 'auto', enMaestro: null, paso: 'No hay que hacer nada.' },
+    'Idioma del artículo': { generacion: 'auto', enMaestro: null, paso: 'El programa lo fija en español.' },
+    'Tipo de publicación': { generacion: 'auto', enMaestro: null, paso: 'No hay que hacer nada.' },
+    'Título principal': { generacion: 'manual', enMaestro: true, paso: 'Paso Entrada de datos → Editar artículo → Título.' },
+    'Subtítulo': { generacion: 'manual-opcional', enMaestro: true, paso: 'Paso Entrada de datos → Editar → Subtítulo (si aplica).' },
+    'Nombres del autor': { generacion: 'manual', enMaestro: true, paso: 'Paso Entrada de datos → Editar → Autores.' },
+    'Apellidos del autor': { generacion: 'manual', enMaestro: true, paso: 'Paso Entrada de datos → Editar → Autores.' },
+    'ORCID del autor': { generacion: 'manual-opcional', enMaestro: false, paso: 'Paso Entrada de datos → Editar → ORCID (opcional).' },
+    'Afiliación institucional': { generacion: 'manual-opcional', enMaestro: true, paso: 'Paso Entrada de datos → Editar → Afiliación (opcional).' },
+    'Orden del autor (primero / adicional)': { generacion: 'auto', enMaestro: null, paso: 'El primero de la lista = autor principal.' },
+    'Rol del contribuyente': { generacion: 'auto', enMaestro: null, paso: 'No hay que hacer nada.' },
+    'Resumen en español': { generacion: 'manual-opcional', enMaestro: false, paso: 'Paso Entrada de datos → Editar → Sección avanzada → Resumen ES.' },
+    'Resumen en inglés': { generacion: 'manual-opcional', enMaestro: false, paso: 'Paso Entrada de datos → Editar → Sección avanzada → Resumen EN.' },
+    'Año del artículo': { generacion: 'manual', enMaestro: true, paso: 'Se toma del número al añadirlo (no se escribe por artículo).' },
+    'Mes del artículo': { generacion: 'manual', enMaestro: true, paso: 'Se toma del número al añadirlo (no se escribe por artículo).' },
+    'Día del artículo (opcional)': { generacion: 'manual-opcional', enMaestro: false, paso: 'Paso Entrada de datos → Editar → Día (opcional).' },
+    'Página inicial': { generacion: 'manual-opcional', enMaestro: false, paso: 'Paso Entrada de datos → Editar → Rango de páginas (ej. 11-19).' },
+    'Página final': { generacion: 'manual-opcional', enMaestro: false, paso: 'Mismo campo de rango de páginas.' },
+    'Licencia Creative Commons': { generacion: 'manual', enMaestro: true, paso: 'Paso Configuración → Licencia (aplica a todos los artículos).' },
+    'DOI del artículo': { generacion: 'auto-grabar', enMaestro: true, paso: 'El programa lo crea al pulsar Grabar en cada artículo.' },
+    'Prefijo DOI de la revista': { generacion: 'manual', enMaestro: true, paso: 'Paso Configuración → Prefijo DOI (10.54114).' },
+    'Página web del artículo': { generacion: 'manual', enMaestro: true, paso: 'Paso Entrada de datos → Editar → Enlace web (obligatorio).' },
+    'Enlace al PDF (detección automática)': { generacion: 'manual-opcional', enMaestro: false, paso: 'Paso Entrada de datos → Editar → Enlace al PDF (opcional).' },
+    'PDF para minería de texto': { generacion: 'manual-opcional', enMaestro: false, paso: 'Mismo campo de enlace al PDF (opcional).' },
+    'Lista de referencias bibliográficas': { generacion: 'manual-opcional', enMaestro: false, paso: 'Paso Entrada de datos → Editar → Pegar referencias → Guardar referencias.' },
+    'Texto de cada referencia': { generacion: 'manual-opcional', enMaestro: false, paso: 'Tras pegar referencias, revisar la lista y Grabar artículo.' },
+    'Clave numérica de la referencia': { generacion: 'auto', enMaestro: null, paso: 'El programa numera las citas al exportar.' },
+};
+
+METADATOS.forEach(m => {
+    const ex = PREVIEW_EXTRA[m.nombre];
+    if (ex) Object.assign(m, ex);
+});
+
+const PREVIEW_SECCIONES = {
+    envio: '1. Datos del envío',
+    revista: '2. Datos de la revista',
+    numero: '3. Datos del número',
+    articulo: '4. Datos de cada artículo'
+};
+
+const GENERACION_LABEL = {
+    auto: 'Automático',
+    'auto-grabar': 'Automático al grabar',
+    manual: 'Manual',
+    'manual-opcional': 'Manual (opcional)'
+};
+
+function esManualGeneracion(g) {
+    return g === 'manual' || g === 'manual-opcional';
+}
+
+function badgeGeneracion(g) {
+    const cls = g === 'auto-grabar' ? 'auto-grabar' : (g === 'auto' ? 'auto' : 'manual');
+    return `<span class="preview-badge ${cls}">${GENERACION_LABEL[g] || g}</span>`;
+}
+
+function badgeMaestro(m) {
+    if (m.enMaestro === null) return '<span class="preview-badge maestro-na">—</span>';
+    return m.enMaestro
+        ? '<span class="preview-badge maestro-si">Sí, en maestro</span>'
+        : '<span class="preview-badge maestro-no">No en maestro</span>';
+}
+
+let previewFiltro = 'todos';
+
+function renderPreviewListas() {
+    const cont = document.getElementById('preview-listas');
+    if (!cont) return;
+    cont.innerHTML = '';
+    ['envio', 'revista', 'numero', 'articulo'].forEach(sec => {
+        const items = METADATOS.filter(m => m.seccion === sec);
+        const grupo = document.createElement('div');
+        grupo.className = 'preview-grupo';
+        grupo.innerHTML = `<h3 class="preview-grupo-titulo">${PREVIEW_SECCIONES[sec]}</h3>`;
+        items.forEach(m => {
+            const esManual = esManualGeneracion(m.generacion);
+            const pendiente = esManual && m.enMaestro === false;
+            const fila = document.createElement('div');
+            fila.className = 'preview-fila';
+            fila.dataset.tipo = m.generacion || '';
+            fila.dataset.manual = esManual ? '1' : '0';
+            fila.dataset.pendiente = pendiente ? '1' : '0';
+            fila.innerHTML = `
+                <div>
+                    <div class="preview-nombre">${m.nombre}</div>
+                    <div class="preview-paso">${m.paso || m.donde || ''}</div>
+                </div>
+                ${badgeGeneracion(m.generacion || 'auto')}
+                ${badgeMaestro(m)}
+            `;
+            grupo.appendChild(fila);
+        });
+        cont.appendChild(grupo);
+    });
+    aplicarFiltroPreview();
+}
+
+function actualizarPreviewResumen() {
+    const total = METADATOS.length;
+    const autos = METADATOS.filter(m => m.generacion === 'auto' || m.generacion === 'auto-grabar').length;
+    const manuales = METADATOS.filter(m => esManualGeneracion(m.generacion)).length;
+    const enMaestro = METADATOS.filter(m => esManualGeneracion(m.generacion) && m.enMaestro === true).length;
+    const pendientes = METADATOS.filter(m => esManualGeneracion(m.generacion) && m.enMaestro === false);
+
+    document.getElementById('preview-total').textContent = total;
+    document.getElementById('preview-resumen').innerHTML = `
+        <div class="preview-stat"><div class="n">${total}</div><div class="l">Tipos de dato</div></div>
+        <div class="preview-stat"><div class="n">${autos}</div><div class="l">Automáticos</div></div>
+        <div class="preview-stat naranja"><div class="n">${manuales}</div><div class="l">Manuales</div></div>
+        <div class="preview-stat verde"><div class="n">${enMaestro}</div><div class="l">Manuales ya en maestro</div></div>
+        <div class="preview-stat naranja"><div class="n">${pendientes.length}</div><div class="l">Manuales que faltan en maestro</div></div>
+    `;
+
+    const aviso = document.getElementById('preview-aviso-pendientes');
+    if (pendientes.length) {
+        aviso.innerHTML = `
+            <strong>Metadatos manuales que NO están en el XML maestro de Ingenio</strong> y habrá que completar al preparar números nuevos con el Administrador de DOIs:
+            <ul>${pendientes.map(m => `<li><strong>${m.nombre}</strong> — ${m.paso || ''}</li>`).join('')}</ul>
+            <p style="margin:10px 0 0;font-size:0.82rem;color:#666;">Fuente: <em>XML maestro de Ingenio.xml</em> (458 artículos). Los demás datos manuales ya aparecen en ese archivo histórico.</p>
+        `;
+    } else {
+        aviso.innerHTML = '<strong>Todos los metadatos manuales</strong> ya aparecen en el XML maestro de Ingenio.';
+    }
+}
+
+function aplicarFiltroPreview() {
+    document.querySelectorAll('.preview-fila').forEach(el => {
+        let ok = true;
+        if (previewFiltro === 'manual') ok = el.dataset.manual === '1';
+        else if (previewFiltro === 'pendiente') ok = el.dataset.pendiente === '1';
+        else if (previewFiltro === 'auto') ok = el.dataset.manual === '0';
+        el.classList.toggle('hidden-prev', !ok);
+    });
+}
+
+function abrirPreview() {
+    actualizarPreviewResumen();
+    renderPreviewListas();
+    const ov = document.getElementById('preview-overlay');
+    ov.classList.add('open');
+    ov.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+}
+
+function cerrarPreview() {
+    const ov = document.getElementById('preview-overlay');
+    ov.classList.remove('open');
+    ov.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') cerrarPreview();
+});
+
+document.addEventListener('click', e => {
+    const btn = e.target.closest('.preview-filtro');
+    if (!btn) return;
+    document.querySelectorAll('.preview-filtro').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    previewFiltro = btn.dataset.pf;
+    aplicarFiltroPreview();
+});
+
+function renderItem(m) {
+    const div = document.createElement('div');
+    div.className = 'meta-item';
+    div.dataset.estado = m.estado;
+    div.dataset.buscar = (m.nombre + ' ' + m.xml + ' ' + m.desc + ' ' + (m.donde||'')).toLowerCase();
+    div.innerHTML = `
+        <div class="meta-top">
+            <div class="meta-nombre">${m.nombre}</div>
+            <span class="badge-estado ${m.estado}">${ESTADO_LABEL[m.estado]}</span>
+        </div>
+        <div class="meta-xml">&lt;${m.xml}&gt;</div>
+        <p class="meta-desc">${m.desc}</p>
+        <div class="meta-donde"><strong>En la herramienta:</strong> ${m.donde}</div>
+        ${m.ejemplo ? `<div class="meta-ejemplo">Ejemplo en XML de referencia: ${m.ejemplo}</div>` : ''}
+    `;
+    return div;
+}
+
+function renderListas() {
+    ['envio','revista','numero','articulo'].forEach(s => {
+        const cont = document.getElementById('lista-' + s);
+        METADATOS.filter(m => m.seccion === s).forEach(m => cont.appendChild(renderItem(m)));
+    });
+}
+
+function actualizarResumen() {
+    const counts = { si: 0, parcial: 0, no: 0, auto: 0 };
+    METADATOS.forEach(m => counts[m.estado]++);
+    document.getElementById('resumen').innerHTML = `
+        <div class="resumen-card si"><div class="num">${counts.si}</div><div class="lbl">Sí prepara</div></div>
+        <div class="resumen-card parcial"><div class="num">${counts.parcial}</div><div class="lbl">Parcial</div></div>
+        <div class="resumen-card no"><div class="num">${counts.no}</div><div class="lbl">No prepara</div></div>
+        <div class="resumen-card auto"><div class="num">${counts.auto}</div><div class="lbl">Automático</div></div>
+        <div class="resumen-card"><div class="num">${METADATOS.length}</div><div class="lbl">Total metadatos</div></div>
+    `;
+}
+
+function toggleSeccion(el) {
+    el.classList.toggle('open');
+}
+
+let filtroActivo = 'todos';
+
+function aplicarFiltros() {
+    const q = document.getElementById('buscar').value.trim().toLowerCase();
+    document.querySelectorAll('.meta-item').forEach(el => {
+        const okF = filtroActivo === 'todos' || el.dataset.estado === filtroActivo;
+        const okQ = !q || el.dataset.buscar.includes(q);
+        el.classList.toggle('hidden-filter', !(okF && okQ));
+    });
+}
+
+document.getElementById('filtros').addEventListener('click', e => {
+    const btn = e.target.closest('.filtro-btn');
+    if (!btn) return;
+    document.querySelectorAll('.filtro-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    filtroActivo = btn.dataset.f;
+    aplicarFiltros();
+});
+
+document.getElementById('buscar').addEventListener('input', aplicarFiltros);
+
+document.getElementById('fecha-doc').textContent = new Date().toLocaleDateString('es-PR', {
+    year: 'numeric', month: 'long', day: 'numeric'
+});
+
+renderListas();
+actualizarResumen();
+</script>
+</body>
+</html>
